@@ -7,10 +7,10 @@
     "Software Engineer"
   ],
   "regions": [
-    { "label": "Hessen", "linkedin": "Hesse, Germany", "stepstone": "hessen" },
-    { "label": "Rheinland-Pfalz", "linkedin": "Rhineland-Palatinate, Germany", "stepstone": "rheinland-pfalz" }
+    { "label": "Hessen", "linkedin": "Hesse, Germany", "stepstone": "hessen", "xing": "Hessen", "indeed": "Hessen, Germany" },
+    { "label": "Rheinland-Pfalz", "linkedin": "Rhineland-Palatinate, Germany", "stepstone": "rheinland-pfalz", "xing": "Rheinland-Pfalz", "indeed": "Rheinland-Pfalz, Germany" }
   ],
-  "sources": { "linkedin": true, "stepstone": true, "xing": false },
+  "sources": { "linkedin": true, "stepstone": true, "xing": true, "indeed": true },
   "windowHours": 24,
   "careerWindowHours": 336,
   "maxAnalyze": 60,

@@ -19,7 +19,7 @@ export interface CompanyConfig {
   url?: string;
 }
 
-export type Source = "linkedin" | "stepstone" | "xing" | "career";
+export type Source = "linkedin" | "stepstone" | "xing" | "indeed" | "career";
 
 /** A raw posting, normalized across all sources. */
 export interface RawJob {
@@ -48,6 +48,8 @@ export interface Analysis {
   remote: "onsite" | "hybrid" | "remote" | "unknown";
   employmentType: string;
   seniority: string;
+  /** Primary language the job is conducted in, e.g. "German", "English". */
+  language: string;
   /** 3–6 short helpful category tags, e.g. "React", "Remote", "Werkstudent". */
   tags: string[];
   keyRequirements: string[];

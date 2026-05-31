@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Analysis, Draft, RawJob } from "./types";
 
-const MODEL = "gemini-3.1-flash-lite";
+const MODEL = "gemini-2.5-flash-lite";
 
 const schema = {
   type: Type.OBJECT,
@@ -15,6 +15,10 @@ const schema = {
     remote: { type: Type.STRING, enum: ["onsite", "hybrid", "remote", "unknown"] },
     employmentType: { type: Type.STRING },
     seniority: { type: Type.STRING },
+    language: {
+      type: Type.STRING,
+      description: 'main working language of the role, e.g. "German", "English", "German/English"',
+    },
     tags: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
@@ -32,6 +36,7 @@ const schema = {
     "remote",
     "employmentType",
     "seniority",
+    "language",
     "tags",
     "keyRequirements",
     "redFlags",
@@ -57,6 +62,8 @@ Scoring rules:
 - recommend: "apply" (>=70 and no deal-breaker), "maybe" (45–69), "skip" (<45).
 - salary: copy it only if the posting states it; otherwise empty string.
 - coverLetterNeeded / quickApply: infer from the posting; "unknown" if unclear.
+- language: the main working language of the role ("German", "English", or
+  "German/English"). Infer from the posting language + any stated requirement.
 - tags: 3–6 short, scannable labels for filtering — stack/domain/type, e.g.
   "React", "TypeScript", "Remote", "Hybrid", "Werkstudent", "Teilzeit",
   "Fintech", "Senior", "Junior-friendly", "German required", "English OK".

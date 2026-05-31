@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import type { CompanyConfig, RawJob } from "./types";
 import { fetchAll, withinWindow } from "./fetchers";
-import { linkedinSearch, stepstoneSearch, enrichLinkedin } from "./sources";
+import { linkedinSearch, stepstoneSearch, xingSearch, indeedSearch, enrichLinkedin } from "./sources";
 import type { Logger } from "./log";
 
 /** Lazily fill in a posting's description if a source left it empty (LinkedIn). */
@@ -14,8 +14,8 @@ export async function ensureDescription(job: RawJob): Promise<RawJob> {
 
 export interface SearchConfig {
   keywords: string[];
-  regions: { label: string; linkedin: string; stepstone: string }[];
-  sources: { linkedin: boolean; stepstone: boolean; xing: boolean };
+  regions: { label: string; linkedin: string; stepstone: string; xing?: string; indeed?: string }[];
+  sources: { linkedin: boolean; stepstone: boolean; xing: boolean; indeed?: boolean };
   windowHours: number;
   /** Career pages post rarely, so they get their own wider window. */
   careerWindowHours?: number;
@@ -71,9 +71,12 @@ function interleaveBySource(jobs: RawJob[]): RawJob[] {
   const orderedKeys = [
     "linkedin",
     "stepstone",
-    ...careerGroups,
     "xing",
-    ...[...groups.keys()].filter((k) => !k.startsWith("career:") && !["linkedin", "stepstone", "xing"].includes(k)),
+    "indeed",
+    ...careerGroups,
+    ...[...groups.keys()].filter(
+      (k) => !k.startsWith("career:") && !["linkedin", "stepstone", "xing", "indeed"].includes(k)
+    ),
   ];
   const lists = orderedKeys.map((k) => groups.get(k) ?? []).filter((l) => l.length);
 
@@ -142,10 +145,24 @@ export async function gatherJobs(
             return [];
           })
         );
+      if (search.sources.xing)
+        tasks.push(() =>
+          xingSearch(kw, region.xing ?? region.linkedin, region.label, windowHours, log).catch((e) => {
+            log.warn(`Xing query failed · ${region.label} · ${kw}`, { error: e.message });
+            errors.push({ source: `Xing · ${region.label} · ${kw}`, error: e.message });
+            return [];
+          })
+        );
+      if (search.sources.indeed)
+        tasks.push(() =>
+          indeedSearch(kw, region.indeed ?? region.linkedin, region.label, windowHours, log).catch((e) => {
+            log.warn(`Indeed query failed · ${region.label} · ${kw}`, { error: e.message });
+            errors.push({ source: `Indeed · ${region.label} · ${kw}`, error: e.message });
+            return [];
+          })
+        );
     }
   }
-  if (search.sources.xing)
-    errors.push({ source: "Xing", error: "requires login/JS — not fetchable" });
 
   log.info("fanning out", { queries: tasks.length });
   const stopFetch = log.timer("fetch board sources");

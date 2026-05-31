@@ -1,7 +1,27 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  RefreshCw,
+  Star,
+  Check,
+  X,
+  StickyNote,
+  PenLine,
+  Clock,
+  ExternalLink,
+  Copy,
+  Sparkles,
+  Languages,
+} from "lucide-react";
 import type { Analysis, AppStatus, Draft, JobState, RawJob, StoredJob } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input, Textarea } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 
 interface ListJob extends RawJob {
   postedAtKnown: boolean;
@@ -25,13 +45,23 @@ interface ClientJob extends ListJob {
   notes: string;
   appliedAt: string | null;
   draft: Draft | null;
+  /** True if this job had no saved state at fetch time → unseen until now. */
+  isNew: boolean;
 }
 
 const SOURCE_LABEL: Record<string, string> = {
   linkedin: "LinkedIn",
   stepstone: "StepStone",
   xing: "Xing",
+  indeed: "Indeed",
   career: "Career page",
+};
+const SOURCE_COLOR: Record<string, string> = {
+  linkedin: "bg-[#0a66c2] text-white",
+  stepstone: "bg-[#0b4d6b] text-cyan-100",
+  xing: "bg-[#0d4f4a] text-emerald-100",
+  indeed: "bg-[#2557a7] text-white",
+  career: "bg-[#3a2f57] text-violet-100",
 };
 const STATUSES: AppStatus[] = ["new", "saved", "applied", "interviewing", "offer", "rejected", "dismissed"];
 const STATUS_LABEL: Record<AppStatus, string> = {
@@ -44,7 +74,6 @@ const STATUS_LABEL: Record<AppStatus, string> = {
   dismissed: "🗑 Dismissed",
 };
 
-/** Human "posted X ago" from an ISO date. */
 function timeAgo(iso: string | null): { label: string; title: string; fresh: boolean } | null {
   if (!iso) return null;
   const t = Date.parse(iso);
@@ -69,14 +98,22 @@ async function pool<T>(items: T[], limit: number, fn: (item: T) => Promise<void>
   );
 }
 
+const scoreRing: Record<string, string> = {
+  apply: "border-[var(--green)] text-[var(--green)]",
+  maybe: "border-[var(--amber)] text-[var(--amber)]",
+  skip: "border-border text-muted-foreground",
+  pending: "border-border text-muted-foreground",
+  err: "border-destructive text-destructive",
+};
+
 export default function Home() {
   const [view, setView] = useState<"today" | "pipeline">("today");
   const [jobs, setJobs] = useState<ClientJob[]>([]);
   const [meta, setMeta] = useState<ListResponse | null>(null);
   const [phase, setPhase] = useState<"idle" | "listing" | "analyzing" | "done">("idle");
   const [err, setErr] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"toapply" | "all" | "saved">("toapply");
-  const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [filter, setFilter] = useState<"toapply" | "new" | "all" | "saved">("toapply");
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [query, setQuery] = useState("");
 
   function patch(id: string, p: Partial<ClientJob>) {
@@ -101,6 +138,7 @@ export default function Home() {
         notes: j.state?.notes ?? "",
         appliedAt: j.state?.appliedAt ?? null,
         draft: null,
+        isNew: !j.state, // no stored state = not seen/processed before
       }));
       setJobs(initial);
       setPhase("analyzing");
@@ -130,6 +168,7 @@ export default function Home() {
     let v = jobs.filter((j) => j.status !== "dismissed");
     if (filter === "toapply")
       v = v.filter((j) => !j.analysis || j.analysis.recommend !== "skip" || j.status === "saved");
+    if (filter === "new") v = v.filter((j) => j.isNew);
     if (filter === "saved") v = v.filter((j) => j.status === "saved");
     if (sourceFilter !== "all") v = v.filter((j) => j.source === sourceFilter);
     if (query.trim()) {
@@ -141,129 +180,155 @@ export default function Home() {
           (j.analysis?.tags ?? []).some((t) => t.toLowerCase().includes(q))
       );
     }
-    if (phase === "done") v = [...v].sort((a, b) => (b.analysis?.matchScore ?? -1) - (a.analysis?.matchScore ?? -1));
+    if (phase === "done")
+      v = [...v].sort((a, b) => (b.analysis?.matchScore ?? -1) - (a.analysis?.matchScore ?? -1));
     return v;
   }, [jobs, filter, sourceFilter, query, phase]);
 
   const analyzed = jobs.filter((j) => j.ui === "done" || j.ui === "error").length;
   const applyCount = jobs.filter((j) => j.analysis?.recommend === "apply").length;
+  const maybeCount = jobs.filter((j) => j.analysis?.recommend === "maybe").length;
+  const newCount = jobs.filter((j) => j.isNew).length;
   const busy = phase === "listing" || phase === "analyzing";
 
   return (
-    <div className="wrap">
-      <header className="top">
+    <div className="mx-auto max-w-5xl px-4 py-6 pb-24 sm:px-5 sm:py-8">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1>
-            job<span>now</span>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-[28px]">
+            job<span className="text-primary">now</span>
           </h1>
-          <p className="sub">Your personal application cockpit · Hessen &amp; Rheinland-Pfalz</p>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">
+            Personal application cockpit · Hessen &amp; Rheinland-Pfalz
+          </p>
         </div>
-        <div className="tabs">
-          <button className={view === "today" ? "tab on" : "tab"} onClick={() => setView("today")}>
-            Today
-          </button>
-          <button className={view === "pipeline" ? "tab on" : "tab"} onClick={() => setView("pipeline")}>
-            Pipeline
-          </button>
+        <div className="flex items-center gap-3">
+          <Tabs value={view} onValueChange={(v) => setView(v as "today" | "pipeline")}>
+            <TabsList>
+              <TabsTrigger value="today">Today</TabsTrigger>
+              <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          {view === "today" && (
+            <Button onClick={run} disabled={busy}>
+              {phase === "listing" ? (
+                <>
+                  <RefreshCw className="animate-spin" /> Fetching…
+                </>
+              ) : phase === "analyzing" ? (
+                <>
+                  <RefreshCw className="animate-spin" /> Scoring {analyzed}/{jobs.length}
+                </>
+              ) : (
+                <>
+                  <RefreshCw /> Check today&apos;s jobs
+                </>
+              )}
+            </Button>
+          )}
         </div>
-        {view === "today" && (
-          <button className="refresh" onClick={run} disabled={busy}>
-            {phase === "listing" ? (
-              <>
-                <span className="spinner">↻</span> Fetching…
-              </>
-            ) : phase === "analyzing" ? (
-              <>
-                <span className="spinner">↻</span> Scoring {analyzed}/{jobs.length}
-              </>
-            ) : (
-              "↻ Check today's jobs"
-            )}
-          </button>
-        )}
       </header>
 
-      {err && <div className="errbox">⚠ {err}</div>}
+      {err && (
+        <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-[oklch(0.75_0.16_20)]">
+          ⚠ {err}
+        </div>
+      )}
 
       {view === "pipeline" ? (
         <Pipeline />
       ) : (
-        <>
-          {meta && (
-            <>
-              <div className="stats">
-                <div>
-                  <b>{meta.totalFound}</b> found · {meta.windowHours}h
-                </div>
-                <div>
-                  <b>
-                    {analyzed}/{jobs.length}
-                  </b>{" "}
-                  scored
-                </div>
-                <div>
-                  <b>{applyCount}</b> worth applying
-                </div>
-              </div>
+        meta && (
+          <div className="mt-5">
+            <div className="flex flex-wrap gap-6 text-[13px] text-muted-foreground">
+              <Stat n={meta.totalFound} label={`found · ${meta.windowHours}h`} />
+              <Stat n={`${analyzed}/${jobs.length}`} label="scored" />
+              <Stat n={newCount} label="new" accent />
+              <Stat n={applyCount} label="worth applying" accent />
+              <Stat n={maybeCount} label="maybe" />
+            </div>
 
-              {phase === "analyzing" && (
-                <div className="progress">
-                  <div className="bar" style={{ width: `${jobs.length ? (analyzed / jobs.length) * 100 : 0}%` }} />
-                </div>
-              )}
-
-              <div className="filterbar">
-                <div className="seg">
-                  {(["toapply", "all", "saved"] as const).map((f) => (
-                    <button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>
-                      {f === "toapply" ? "To apply" : f === "all" ? "All" : "★ Saved"}
-                    </button>
-                  ))}
-                </div>
-                <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
-                  <option value="all">All sources</option>
-                  <option value="linkedin">LinkedIn</option>
-                  <option value="stepstone">StepStone</option>
-                  <option value="career">Career pages</option>
-                </select>
-                <input
-                  placeholder="Search title, company, tag…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+            {phase === "analyzing" && (
+              <div className="mt-4 h-1 w-full overflow-hidden rounded bg-secondary">
+                <div
+                  className="h-full bg-primary transition-all duration-300"
+                  style={{ width: `${jobs.length ? (analyzed / jobs.length) * 100 : 0}%` }}
                 />
-                <span className="count">{visible.length} shown</span>
               </div>
+            )}
 
+            <div className="mt-5 flex flex-wrap items-center gap-2.5">
+              <Tabs value={filter} onValueChange={(v) => setFilter(v as any)}>
+                <TabsList>
+                  <TabsTrigger value="toapply">To apply</TabsTrigger>
+                  <TabsTrigger value="new">🆕 New</TabsTrigger>
+                  <TabsTrigger value="all">All</TabsTrigger>
+                  <TabsTrigger value="saved">★ Saved</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <Select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
+                <option value="all">All sources</option>
+                <option value="linkedin">LinkedIn</option>
+                <option value="stepstone">StepStone</option>
+                <option value="xing">Xing</option>
+                <option value="indeed">Indeed</option>
+                <option value="career">Career pages</option>
+              </Select>
+              <Input
+                placeholder="Search title, company, tag…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="min-w-[160px] flex-1"
+              />
+              <span className="text-xs text-muted-foreground">{visible.length} shown</span>
+            </div>
+
+            <div className="mt-4 space-y-3">
               {visible.map((job) => (
                 <JobCard key={job.id} job={job} patch={patch} />
               ))}
+            </div>
 
-              {meta.errors.length > 0 && (
-                <details className="errors">
-                  <summary>{meta.errors.length} source query/queries had issues</summary>
-                  <ul>
-                    {meta.errors.map((e, i) => (
-                      <li key={i}>
-                        <b>{e.source}</b>: {e.error}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-              <p className="runmeta">
-                run <code>{meta.runId}</code>
-                {meta.timings && ` · fetched in ${(meta.timings.listMs / 1000).toFixed(1)}s`} ·{" "}
-                <a href="/api/logs?lines=400" target="_blank" rel="noreferrer">
-                  view logs →
-                </a>
-              </p>
-            </>
-          )}
-          {!meta && !busy && !err && (
-            <p className="empty">Hit “Check today&apos;s jobs” to scan LinkedIn, StepStone &amp; career pages.</p>
-          )}
-        </>
+            {meta.errors.length > 0 && (
+              <details className="mt-7 text-xs text-muted-foreground">
+                <summary className="cursor-pointer">{meta.errors.length} source query/queries had issues</summary>
+                <ul className="mt-2 space-y-1">
+                  {meta.errors.map((e, i) => (
+                    <li key={i}>
+                      <b>{e.source}</b>: {e.error}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            <p className="mt-6 text-xs text-muted-foreground">
+              run <code className="text-foreground">{meta.runId}</code>
+              {meta.timings && ` · fetched in ${(meta.timings.listMs / 1000).toFixed(1)}s`} ·{" "}
+              <a className="text-primary hover:underline" href="/api/logs?lines=400" target="_blank" rel="noreferrer">
+                view logs
+              </a>
+            </p>
+          </div>
+        )
       )}
+
+      {view === "today" && !meta && !busy && !err && (
+        <div className="mt-16 text-center text-muted-foreground">
+          <Sparkles className="mx-auto mb-3 size-7 opacity-50" />
+          Hit <b className="text-foreground">Check today&apos;s jobs</b> to scan LinkedIn, StepStone, Xing &amp; career pages.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Stat({ n, label, accent }: { n: React.ReactNode; label: string; accent?: boolean }) {
+  return (
+    <div>
+      <div className={cn("text-xl font-semibold leading-tight", accent ? "text-[var(--green)]" : "text-foreground")}>
+        {n}
+      </div>
+      <div>{label}</div>
     </div>
   );
 }
@@ -281,14 +346,14 @@ function JobCard({ job, patch }: { job: ClientJob; patch: (id: string, p: Partia
   const [notesOpen, setNotesOpen] = useState(false);
   const [draftOpen, setDraftOpen] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
-  const scoreClass = a ? a.recommend : job.ui === "error" ? "err" : "pending";
+  const ring = a ? a.recommend : job.ui === "error" ? "err" : "pending";
+  const ago = timeAgo(job.postedAt);
 
   async function changeStatus(status: AppStatus) {
     patch(job.id, { status });
     const r = await setStatus(job.id, status);
     if (r?.state) patch(job.id, { appliedAt: r.state.appliedAt });
   }
-
   async function saveNotes(notes: string) {
     patch(job.id, { notes });
     await fetch("/api/jobs/state", {
@@ -297,7 +362,6 @@ function JobCard({ job, patch }: { job: ClientJob; patch: (id: string, p: Partia
       body: JSON.stringify({ id: job.id, notes }),
     });
   }
-
   async function makeDraft(force = false) {
     setDraftOpen(true);
     if (job.draft && !force) return;
@@ -315,117 +379,164 @@ function JobCard({ job, patch }: { job: ClientJob; patch: (id: string, p: Partia
     }
   }
 
+  const stripe =
+    job.status === "saved"
+      ? "border-l-[3px] border-l-[var(--amber)]"
+      : job.status === "applied"
+        ? "border-l-[3px] border-l-primary"
+        : job.status === "interviewing"
+          ? "border-l-[3px] border-l-violet-400"
+          : job.status === "offer"
+            ? "border-l-[3px] border-l-[var(--green)]"
+            : job.status === "rejected"
+              ? "border-l-[3px] border-l-destructive"
+              : "";
+
   return (
-    <div className={`job ${!a ? "unscored" : ""} ${job.status !== "new" ? "tracked s-" + job.status : ""}`}>
-      <div className={`score ${scoreClass}`}>
-        {a ? a.matchScore : job.ui === "error" ? "!" : <span className="spinner">↻</span>}
-      </div>
-      <div>
-        <h3>
-          <a href={job.url} target="_blank" rel="noreferrer">
-            {job.title}
-          </a>
-        </h3>
-        <div className="company">
-          <span className={`src src-${job.source}`}>{SOURCE_LABEL[job.source] ?? job.source}</span>
-          {" · "}
-          {job.company} · {job.location}
-          {job.region && job.region !== job.location && ` · ${job.region}`}
-          {(() => {
-            const ago = timeAgo(job.postedAt);
-            return ago ? (
-              <span className={`posted ${ago.fresh ? "fresh" : ""}`} title={`Posted ${ago.title}`}>
-                {" · 🕒 "}
-                {ago.label}
-              </span>
-            ) : (
-              " · ⚑ date unknown"
-            );
-          })()}
+    <Card className={cn(stripe, !a && "opacity-80")}>
+      <CardContent className="grid grid-cols-[44px_1fr] gap-3 sm:grid-cols-[56px_1fr_auto] sm:gap-4">
+        <div
+          className={cn(
+            "grid size-11 place-items-center rounded-full border-[2.5px] text-base font-bold sm:size-14 sm:text-xl",
+            scoreRing[ring]
+          )}
+        >
+          {a ? a.matchScore : job.ui === "error" ? "!" : <RefreshCw className="size-4 animate-spin" />}
         </div>
 
-        {a ? (
-          <>
-            <p className="reason">{a.matchReason}</p>
-            <div className="tags">
-              {a.tags.map((t, i) => (
-                <span key={`t${i}`} className="tag chip">
-                  {t}
-                </span>
-              ))}
-              {a.salary && <span className="tag good">💶 {a.salary}</span>}
-              <span className={`tag ${a.coverLetterNeeded === "no" ? "good" : a.coverLetterNeeded === "yes" ? "warn" : ""}`}>
-                cover letter: {a.coverLetterNeeded}
+        <div className="min-w-0">
+          <h3 className="flex items-center gap-2 text-[15px] font-semibold leading-snug sm:text-[17px]">
+            {job.isNew && <Badge variant="good" className="shrink-0">🆕 New</Badge>}
+            <a href={job.url} target="_blank" rel="noreferrer" className="hover:text-primary">
+              {job.title}
+            </a>
+          </h3>
+          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-muted-foreground">
+            <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-bold", SOURCE_COLOR[job.source])}>
+              {SOURCE_LABEL[job.source] ?? job.source}
+            </span>
+            <span>· {job.company} · {job.location}</span>
+            {job.region && job.region !== job.location && <span>· {job.region}</span>}
+            {ago ? (
+              <span
+                className={cn("inline-flex items-center gap-0.5", ago.fresh && "font-semibold text-[var(--green)]")}
+                title={`Posted ${ago.title}`}
+              >
+                · <Clock className="size-3" /> {ago.label}
               </span>
-              {a.quickApply === "yes" && <span className="tag good">⚡ quick apply</span>}
-              {a.redFlags.map((f, i) => (
-                <span key={`r${i}`} className="tag warn">
-                  ⚠ {f}
-                </span>
-              ))}
-            </div>
-            {a.keyRequirements.length > 0 && <p className="req">Needs: {a.keyRequirements.join(" · ")}</p>}
-          </>
-        ) : (
-          <p className="reason muted">{job.ui === "error" ? "couldn’t score this one (see logs)" : "scoring…"}</p>
-        )}
-
-        <div className="actions">
-          <button className="act primary" onClick={() => makeDraft()}>
-            ✍ Draft application
-          </button>
-          <button className={`act ${job.status === "saved" ? "active" : ""}`} onClick={() => changeStatus("saved")}>
-            ★ Save
-          </button>
-          <button className={`act ${job.status === "applied" ? "active" : ""}`} onClick={() => changeStatus("applied")}>
-            ✓ Applied
-          </button>
-          <button className="act" onClick={() => setNotesOpen((o) => !o)}>
-            📝 Notes{job.notes ? " •" : ""}
-          </button>
-          <button className="act ghost" onClick={() => changeStatus("dismissed")}>
-            ✕ Dismiss
-          </button>
-          {job.appliedAt && <span className="applied-on">applied {job.appliedAt.slice(0, 10)}</span>}
-        </div>
-
-        {notesOpen && (
-          <textarea
-            className="notes"
-            placeholder="Notes — recruiter name, salary asked, follow-up…"
-            defaultValue={job.notes}
-            onBlur={(e) => saveNotes(e.target.value)}
-          />
-        )}
-
-        {draftOpen && (
-          <div className="draft">
-            {draftLoading && !job.draft ? (
-              <p className="muted">
-                <span className="spinner">↻</span> Writing a tailored application…
-              </p>
-            ) : job.draft ? (
-              <DraftView draft={job.draft} onRegen={() => makeDraft(true)} loading={draftLoading} />
             ) : (
-              <p className="muted">No draft.</p>
+              <span>· ⚑ date unknown</span>
             )}
           </div>
-        )}
-      </div>
-      <div className="right">
-        {a && <span className="pill">{a.recommend.toUpperCase()}</span>}
-        <a className="apply-btn" href={job.url} target="_blank" rel="noreferrer">
-          Open →
-        </a>
-        <select className="statussel" value={job.status} onChange={(e) => changeStatus(e.target.value as AppStatus)}>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {STATUS_LABEL[s]}
-            </option>
-          ))}
-        </select>
-      </div>
-    </div>
+
+          {a ? (
+            <>
+              <p className="mt-2 text-sm text-foreground/90">{a.matchReason}</p>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {a.language && (
+                  <Badge variant="default" className="gap-1">
+                    <Languages className="size-3" /> {a.language}
+                  </Badge>
+                )}
+                {a.tags.map((t, i) => (
+                  <Badge key={`t${i}`} variant="accent">
+                    {t}
+                  </Badge>
+                ))}
+                {a.salary && <Badge variant="good">💶 {a.salary}</Badge>}
+                <Badge variant={a.coverLetterNeeded === "no" ? "good" : a.coverLetterNeeded === "yes" ? "warn" : "default"}>
+                  cover letter: {a.coverLetterNeeded}
+                </Badge>
+                {a.quickApply === "yes" && <Badge variant="good">⚡ quick apply</Badge>}
+                {a.redFlags.map((f, i) => (
+                  <Badge key={`r${i}`} variant="warn">
+                    ⚠ {f}
+                  </Badge>
+                ))}
+              </div>
+              {a.keyRequirements.length > 0 && (
+                <p className="mt-2 text-[12.5px] text-muted-foreground">Needs: {a.keyRequirements.join(" · ")}</p>
+              )}
+            </>
+          ) : (
+            <p className="mt-2 text-sm italic text-muted-foreground">
+              {job.ui === "error" ? "couldn’t score this one (see logs)" : "scoring…"}
+            </p>
+          )}
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={() => makeDraft()}>
+              <PenLine /> Draft
+            </Button>
+            <Button size="sm" variant={job.status === "saved" ? "success" : "secondary"} onClick={() => changeStatus("saved")}>
+              <Star /> Save
+            </Button>
+            <Button size="sm" variant={job.status === "applied" ? "success" : "secondary"} onClick={() => changeStatus("applied")}>
+              <Check /> Applied
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setNotesOpen((o) => !o)}>
+              <StickyNote /> Notes{job.notes ? " •" : ""}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => changeStatus("dismissed")}>
+              <X /> Dismiss
+            </Button>
+            {job.appliedAt && (
+              <span className="ml-auto text-xs text-muted-foreground">applied {job.appliedAt.slice(0, 10)}</span>
+            )}
+          </div>
+
+          {notesOpen && (
+            <Textarea
+              className="mt-2.5"
+              placeholder="Notes — recruiter name, salary asked, follow-up…"
+              defaultValue={job.notes}
+              onBlur={(e) => saveNotes(e.target.value)}
+            />
+          )}
+
+          {draftOpen && (
+            <div className="mt-3 rounded-lg border border-border bg-background/40 p-3.5">
+              {draftLoading && !job.draft ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <RefreshCw className="size-4 animate-spin" /> Writing a tailored application…
+                </p>
+              ) : job.draft ? (
+                <DraftView draft={job.draft} onRegen={() => makeDraft(true)} loading={draftLoading} />
+              ) : (
+                <p className="text-sm text-muted-foreground">No draft.</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="col-span-2 flex flex-row items-center gap-2 border-t border-border pt-3 sm:col-span-1 sm:flex-col sm:items-end sm:border-0 sm:pt-0">
+          {a && (
+            <Badge
+              variant={a.recommend === "apply" ? "good" : a.recommend === "maybe" ? "warn" : "default"}
+              className="order-2 sm:order-1"
+            >
+              {a.recommend.toUpperCase()}
+            </Badge>
+          )}
+          <Button asChild size="sm" variant="outline" className="order-1 flex-1 sm:order-2 sm:flex-none">
+            <a href={job.url} target="_blank" rel="noreferrer">
+              Open <ExternalLink />
+            </a>
+          </Button>
+          <Select
+            className="order-3 max-w-[150px] flex-1 text-[11.5px] sm:flex-none"
+            value={job.status}
+            onChange={(e) => changeStatus(e.target.value as AppStatus)}
+          >
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABEL[s]}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -438,30 +549,32 @@ function DraftView({ draft, onRegen, loading }: { draft: Draft; onRegen: () => v
   }
   return (
     <div>
-      <div className="draft-head">
-        <span className="tag chip">{draft.language}</span>
-        <button className="act" onClick={() => copy(draft.coverLetter, "letter")}>
-          {copied === "letter" ? "Copied!" : "Copy letter"}
-        </button>
-        <button className="act" onClick={() => copy(draft.shortMessage, "msg")}>
-          {copied === "msg" ? "Copied!" : "Copy quick-apply msg"}
-        </button>
-        <button className="act ghost" onClick={onRegen} disabled={loading}>
-          {loading ? "…" : "↻ Regenerate"}
-        </button>
+      <div className="mb-2.5 flex flex-wrap items-center gap-2">
+        <Badge variant="accent">{draft.language}</Badge>
+        <Button size="sm" variant="secondary" onClick={() => copy(draft.coverLetter, "letter")}>
+          <Copy /> {copied === "letter" ? "Copied!" : "Copy letter"}
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => copy(draft.shortMessage, "msg")}>
+          <Copy /> {copied === "msg" ? "Copied!" : "Quick-apply msg"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onRegen} disabled={loading}>
+          <RefreshCw className={loading ? "animate-spin" : ""} /> Regenerate
+        </Button>
       </div>
-      <pre className="letter">{draft.coverLetter}</pre>
-      <div className="why">
-        <b>Why I fit:</b>
-        <ul>
+      <pre className="mb-3 whitespace-pre-wrap rounded-md border border-border bg-card p-3 font-sans text-[13px] leading-relaxed text-foreground/90">
+        {draft.coverLetter}
+      </pre>
+      <div className="mb-3">
+        <b className="text-[13px]">Why I fit:</b>
+        <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[13px] text-foreground/90">
           {draft.bullets.map((b, i) => (
             <li key={i}>{b}</li>
           ))}
         </ul>
       </div>
-      <div className="shortmsg">
-        <b>Quick-apply message:</b>
-        <p>{draft.shortMessage}</p>
+      <div>
+        <b className="text-[13px]">Quick-apply message:</b>
+        <p className="mt-1.5 text-[13px] italic text-muted-foreground">{draft.shortMessage}</p>
       </div>
     </div>
   );
@@ -476,65 +589,77 @@ function Pipeline() {
       .catch(() => setData({ jobs: [], counts: {}, total: 0 }));
   }, []);
 
-  if (!data) return <p className="empty">Loading pipeline…</p>;
+  if (!data) return <p className="mt-16 text-center text-muted-foreground">Loading pipeline…</p>;
   if (data.jobs.length === 0)
     return (
-      <p className="empty">
-        Nothing tracked yet. On the <b>Today</b> tab, hit ★ Save or ✓ Applied on jobs to build your pipeline.
+      <p className="mt-16 text-center text-muted-foreground">
+        Nothing tracked yet. On the <b className="text-foreground">Today</b> tab, hit ★ Save or ✓ Applied to build your pipeline.
       </p>
     );
 
   const groups: AppStatus[] = ["saved", "applied", "interviewing", "offer", "rejected"];
   return (
-    <>
-      <div className="stats">
+    <div className="mt-5">
+      <div className="flex flex-wrap gap-6 text-[13px] text-muted-foreground">
         {groups.map((g) => (
-          <div key={g}>
-            <b>{data.counts[g] ?? 0}</b> {g}
-          </div>
+          <Stat key={g} n={data.counts[g] ?? 0} label={g} />
         ))}
       </div>
       {groups
         .filter((g) => data.jobs.some((j) => j.state.status === g))
         .map((g) => (
-          <div key={g}>
-            <h2 className="grouphdr">{STATUS_LABEL[g]}</h2>
-            {data.jobs
-              .filter((j) => j.state.status === g)
-              .map((rec) => (
-                <div className={`job tracked s-${g}`} key={rec.job.id}>
-                  <div className={`score ${rec.analysis?.recommend ?? "pending"}`}>
-                    {rec.analysis?.matchScore ?? "—"}
-                  </div>
-                  <div>
-                    <h3>
-                      <a href={rec.job.url} target="_blank" rel="noreferrer">
-                        {rec.job.title}
-                      </a>
-                    </h3>
-                    <div className="company">
-                      <span className={`src src-${rec.job.source}`}>
-                        {SOURCE_LABEL[rec.job.source] ?? rec.job.source}
-                      </span>
-                      {" · "}
-                      {rec.job.company} · {rec.job.location}
-                      {(() => {
-                        const ago = timeAgo(rec.job.postedAt);
-                        return ago ? <span className="posted" title={`Posted ${ago.title}`}>{" · 🕒 "}{ago.label}</span> : null;
-                      })()}
-                      {rec.state.appliedAt && ` · applied ${rec.state.appliedAt.slice(0, 10)}`}
-                    </div>
-                    {rec.state.notes && <p className="req">📝 {rec.state.notes}</p>}
-                  </div>
-                  <div className="right">
-                    <a className="apply-btn" href={rec.job.url} target="_blank" rel="noreferrer">
-                      Open →
-                    </a>
-                  </div>
-                </div>
-              ))}
+          <div key={g} className="mt-6">
+            <h2 className="mb-2 border-b border-border pb-1.5 text-[15px] text-muted-foreground">{STATUS_LABEL[g]}</h2>
+            <div className="space-y-3">
+              {data.jobs
+                .filter((j) => j.state.status === g)
+                .map((rec) => {
+                  const ago = timeAgo(rec.job.postedAt);
+                  return (
+                    <Card key={rec.job.id}>
+                      <CardContent className="flex items-start gap-3">
+                        <div
+                          className={cn(
+                            "grid size-11 shrink-0 place-items-center rounded-full border-[2.5px] text-base font-bold",
+                            scoreRing[rec.analysis?.recommend ?? "pending"]
+                          )}
+                        >
+                          {rec.analysis?.matchScore ?? "—"}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-[15px] font-semibold sm:text-[17px]">
+                            <a href={rec.job.url} target="_blank" rel="noreferrer" className="hover:text-primary">
+                              {rec.job.title}
+                            </a>
+                          </h3>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted-foreground">
+                            <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-bold", SOURCE_COLOR[rec.job.source])}>
+                              {SOURCE_LABEL[rec.job.source] ?? rec.job.source}
+                            </span>
+                            <span>· {rec.job.company} · {rec.job.location}</span>
+                            {ago && (
+                              <span className="inline-flex items-center gap-0.5">
+                                · <Clock className="size-3" /> {ago.label}
+                              </span>
+                            )}
+                            {rec.state.appliedAt && <span>· applied {rec.state.appliedAt.slice(0, 10)}</span>}
+                          </div>
+                          {rec.state.notes && (
+                            <p className="mt-1.5 text-[12.5px] text-muted-foreground">📝 {rec.state.notes}</p>
+                          )}
+                        </div>
+                        <Button asChild size="sm" variant="outline">
+                          <a href={rec.job.url} target="_blank" rel="noreferrer">
+                            Open <ExternalLink />
+                          </a>
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+            </div>
           </div>
         ))}
-    </>
+    </div>
   );
 }
