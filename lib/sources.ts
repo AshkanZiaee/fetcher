@@ -379,16 +379,18 @@ export async function xingSearch(
     })
     .slice(0, XING_ENRICH_CAP);
 
-  for (const p of enrichable) {
-    try {
-      const detail = await getHtml(p.detailUrl);
-      const iso = xingDetailDate(detail);
-      if (iso) p.job.postedAt = iso;
-    } catch {
-      // keep the relative-date approximation on failure
-    }
-    await new Promise((r) => setTimeout(r, 400));
-  }
+  // Parallel (capped) detail fetches — was sequential w/ 400ms throttle.
+  await Promise.all(
+    enrichable.map(async (p) => {
+      try {
+        const detail = await getHtml(p.detailUrl);
+        const iso = xingDetailDate(detail);
+        if (iso) p.job.postedAt = iso;
+      } catch {
+        // keep the relative-date approximation on failure
+      }
+    })
+  );
 
   const jobs: RawJob[] = [];
   for (const p of parsed) {

@@ -11,6 +11,7 @@
     { "label": "Rheinland-Pfalz", "linkedin": "Rhineland-Palatinate, Germany", "stepstone": "rheinland-pfalz", "xing": "Rheinland-Pfalz", "indeed": "Rheinland-Pfalz, Germany" }
   ],
   "sources": { "linkedin": true, "stepstone": true, "xing": true, "indeed": true },
+  "excludeCompanies": ["Communitas", "Pro Humanis", "Merlin", "Zwo", "Immerzed", "BNet", "b.net"],
   "windowHours": 24,
   "careerWindowHours": 336,
   "maxAnalyze": 60,

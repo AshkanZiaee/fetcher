@@ -6,6 +6,7 @@ export type AtsType =
   | "recruitee"
   | "smartrecruiters"
   | "amazon"
+  | "deutscheboerse"
   | "custom";
 
 export interface CompanyConfig {

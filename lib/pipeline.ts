@@ -3,6 +3,7 @@ import path from "path";
 import type { CompanyConfig, RawJob } from "./types";
 import { fetchAll, withinWindow } from "./fetchers";
 import { linkedinSearch, stepstoneSearch, xingSearch, indeedSearch, enrichLinkedin } from "./sources";
+import { isExcludedCompany, normKey } from "./normalize";
 import type { Logger } from "./log";
 
 /** Lazily fill in a posting's description if a source left it empty (LinkedIn). */
@@ -21,6 +22,8 @@ export interface SearchConfig {
   careerWindowHours?: number;
   maxAnalyze: number;
   includeCareerPages: boolean;
+  /** Company names to exclude from results (recruiters, own employer, etc.). */
+  excludeCompanies?: string[];
 }
 
 export async function readConfig() {
@@ -190,17 +193,31 @@ export async function gatherJobs(
     jobs.push(...careerJobs);
   }
 
-  // ── Dedupe: by id (same job under multiple keywords) AND by company+title
-  //    (e.g. Greenhouse lists one role under several locations). ──
+  // ── Exclude blocklisted companies (recruiters / own employer / etc.) ──
+  const blocklist = search.excludeCompanies ?? [];
+  let excluded = 0;
+  if (blocklist.length) {
+    const before = jobs.length;
+    jobs = jobs.filter((j) => !isExcludedCompany(j.company, blocklist));
+    excluded = before - jobs.length;
+  }
+
+  // ── Dedupe: by id, AND by normalized company+title so the SAME job posted on
+  //    LinkedIn / StepStone / Indeed / Xing collapses to one. ──
   const seen = new Set<string>();
   const deduped: RawJob[] = [];
+  let crossPlatformDupes = 0;
   for (const j of jobs) {
-    const titleKey = `${j.company.toLowerCase()}::${j.title.toLowerCase().replace(/\s+/g, " ").trim()}`;
-    if (seen.has(j.id) || seen.has(titleKey)) continue;
+    const key = normKey(j.company, j.title);
+    if (seen.has(j.id) || seen.has(key)) {
+      crossPlatformDupes++;
+      continue;
+    }
     seen.add(j.id);
-    seen.add(titleKey);
+    seen.add(key);
     deduped.push(j);
   }
+  log.info("filtered", { excludedCompanies: excluded, crossPlatformDupes });
 
   const totalFound = deduped.length;
   // Round-robin across sources so the maxAnalyze cap doesn't starve the

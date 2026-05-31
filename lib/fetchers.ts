@@ -176,6 +176,68 @@ async function amazon(c: CompanyConfig): Promise<RawJob[]> {
   return out;
 }
 
+/**
+ * Deutsche Börse careers — a Nuxt SPA backed by my-job-shop's Typesense search.
+ * The scoped search key is embedded in the page's __NUXT_DATA__ (and could
+ * rotate), so we fetch it dynamically and cache it. Region-filtered to Hessen/RLP.
+ */
+let dbKeyCache: string | null = null;
+async function deutscheBoerseKey(): Promise<string> {
+  if (dbKeyCache) return dbKeyCache;
+  const html = await getText("https://careers.deutsche-boerse.com/");
+  const m = html.match(/id="__NUXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (!m) throw new Error("deutsche-boerse: no __NUXT_DATA__");
+  const arr = JSON.parse(m[1]);
+  for (const el of arr) {
+    if (el && typeof el === "object" && !Array.isArray(el)) {
+      for (const [k, v] of Object.entries(el)) {
+        if (k.startsWith("typesenseApiKey") && typeof v === "number" && typeof arr[v] === "string" && arr[v].length > 50) {
+          dbKeyCache = arr[v] as string;
+          return dbKeyCache;
+        }
+      }
+    }
+  }
+  throw new Error("deutsche-boerse: typesense key not found");
+}
+
+async function deutscheboerse(c: CompanyConfig): Promise<RawJob[]> {
+  const key = await deutscheBoerseKey();
+  const res = await fetch("https://api.my-job-shop.com/api/typesense/multi_search", {
+    method: "POST",
+    headers: { "x-typesense-api-key": key, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      searches: [{ collection: "offers", q: "*", query_by: "title", per_page: 100 }],
+    }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    dbKeyCache = null; // force key refresh next time
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  const hits = data?.results?.[0]?.hits ?? [];
+  return hits
+    .map((h: any) => h.document)
+    .filter((d: any) => {
+      const loc = Array.isArray(d.location) ? d.location.join(", ") : d.location ?? "";
+      return REGION_RE.test(`${loc} ${d.full_address ?? ""}`);
+    })
+    .map((d: any) => ({
+      id: `db-${d.id ?? d.offer_uuid}`,
+      company: c.name,
+      title: d.title,
+      location: Array.isArray(d.location) ? d.location.join(", ") : d.location ?? "—",
+      url: d.url || d.application_url || "https://careers.deutsche-boerse.com/",
+      postedAt: d.create_date_timestamp
+        ? new Date(Number(d.create_date_timestamp) * 1000).toISOString()
+        : null,
+      description: htmlToText(
+        [d.introduction, d.about, d.expectation, d.offering, d.additional].filter(Boolean).join("\n\n")
+      ),
+    }));
+}
+
 const FETCHERS: Record<string, (c: CompanyConfig) => Promise<RawJob[]>> = {
   greenhouse,
   lever,
@@ -184,6 +246,7 @@ const FETCHERS: Record<string, (c: CompanyConfig) => Promise<RawJob[]>> = {
   smartrecruiters,
   personio,
   amazon,
+  deutscheboerse,
   custom,
 };
 

@@ -1,6 +1,7 @@
 import type { Analysis, Draft, JobState, RawJob, StoredJob } from "./types";
 import { defaultState } from "./types";
 import { supabase, supabaseConfigured } from "./supabase";
+import { normKey } from "./normalize";
 
 /**
  * Persistent job + application-state store, backed by the Supabase `jobs` table.
@@ -128,5 +129,23 @@ export async function getStateMap(): Promise<Record<string, JobState>> {
   if (error || !data) return {};
   const out: Record<string, JobState> = {};
   for (const row of data as Pick<JobRow, "id" | "state">[]) out[row.id] = row.state;
+  return out;
+}
+
+/**
+ * Map of normalized company+title -> state, but ONLY for jobs you've actually
+ * tracked (not the default "new"). Lets a cross-platform duplicate inherit an
+ * "applied"/"saved" status even though its id differs.
+ */
+export async function getStateByKey(): Promise<Record<string, JobState>> {
+  if (!supabaseConfigured()) return {};
+  const { data, error } = await supabase.from("jobs").select("job, state");
+  if (error || !data) return {};
+  const out: Record<string, JobState> = {};
+  for (const row of data as { job: RawJob; state: JobState }[]) {
+    if (row.state?.status && row.state.status !== "new") {
+      out[normKey(row.job.company, row.job.title)] = row.state;
+    }
+  }
   return out;
 }

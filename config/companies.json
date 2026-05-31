@@ -1,5 +1,6 @@
 [
   { "name": "Amazon (Hessen/RLP)", "ats": "amazon", "id": "amazon" },
+  { "name": "Deutsche Börse", "ats": "deutscheboerse", "id": "deutsche-boerse" },
   { "name": "Robert Bosch", "ats": "smartrecruiters", "id": "boschgroup" },
   { "name": "ServiceNow", "ats": "smartrecruiters", "id": "servicenow" },
   { "name": "Continental", "ats": "smartrecruiters", "id": "Continental" },

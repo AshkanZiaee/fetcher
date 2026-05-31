@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { gatherJobs, readConfig } from "@/lib/pipeline";
 import { createLogger, newRunId } from "@/lib/log";
-import { getStateMap } from "@/lib/store";
+import { getStateByKey, getStateMap } from "@/lib/store";
+import { normKey } from "@/lib/normalize";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -33,7 +34,9 @@ export async function GET(req: Request) {
   });
 
   const result = await gatherJobs(cfg.search, cfg.companies, { windowHours, maxAnalyze }, log);
-  const stateMap = await getStateMap(); // merge any saved/applied/dismissed status
+  // Merge saved status by job id, and — for cross-platform duplicates — by
+  // normalized company+title, so "already applied" follows the job everywhere.
+  const [stateMap, stateByKey] = await Promise.all([getStateMap(), getStateByKey()]);
   const totalMs = stop();
   log.info("LIST RESULT", { totalFound: result.totalFound, returned: result.jobs.length, totalMs });
 
@@ -49,7 +52,7 @@ export async function GET(req: Request) {
     jobs: result.jobs.map((j) => ({
       ...j,
       postedAtKnown: !!j.postedAt,
-      state: stateMap[j.id] ?? null,
+      state: stateMap[j.id] ?? stateByKey[normKey(j.company, j.title)] ?? null,
     })),
     errors: result.errors,
   });
