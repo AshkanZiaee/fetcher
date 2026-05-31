@@ -1,0 +1,23 @@
+[
+  { "name": "Amazon (Hessen/RLP)", "ats": "amazon", "id": "amazon" },
+  { "name": "Robert Bosch", "ats": "smartrecruiters", "id": "boschgroup" },
+  { "name": "ServiceNow", "ats": "smartrecruiters", "id": "servicenow" },
+  { "name": "Continental", "ats": "smartrecruiters", "id": "Continental" },
+  { "name": "KION Group", "ats": "greenhouse", "id": "kion" },
+  { "name": "IONOS", "ats": "greenhouse", "id": "ionos" },
+  { "name": "Viessmann", "ats": "ashby", "id": "viessmann" },
+  { "name": "Accso", "ats": "recruitee", "id": "accso" },
+  { "name": "360T (Deutsche Börse)", "ats": "personio", "id": "360t" },
+  { "name": "Samson AG", "ats": "personio", "id": "samson" },
+  { "name": "CLARK", "ats": "personio", "id": "clark" },
+  { "name": "Cashlink Technologies", "ats": "personio", "id": "cashlink" },
+  { "name": "Cofinpro", "ats": "personio", "id": "cofinpro" },
+  { "name": "Finanzguru (dwins)", "ats": "personio", "id": "finanzguru" },
+  { "name": "Fincite", "ats": "personio", "id": "fincite-gmbh" },
+  { "name": "Wingcopter", "ats": "personio", "id": "wingcopter" },
+  { "name": "node.energy", "ats": "personio", "id": "node-energy" },
+  { "name": "Lissi", "ats": "personio", "id": "lissi" },
+  { "name": "Genow", "ats": "personio", "id": "genow" },
+  { "name": "Micromata", "ats": "personio", "id": "micromata" },
+  { "name": "TechQuartier", "ats": "personio", "id": "techquartier" }
+]

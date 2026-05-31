@@ -1,0 +1,18 @@
+{
+  "_comment": "THIS is your editable 'what I'm looking for'. Change keywords/regions and refresh. profile.md is the separate file Gemini uses to SCORE the match.",
+  "keywords": [
+    "React Developer",
+    "Full Stack Developer",
+    "Frontend Developer",
+    "Software Engineer"
+  ],
+  "regions": [
+    { "label": "Hessen", "linkedin": "Hesse, Germany", "stepstone": "hessen" },
+    { "label": "Rheinland-Pfalz", "linkedin": "Rhineland-Palatinate, Germany", "stepstone": "rheinland-pfalz" }
+  ],
+  "sources": { "linkedin": true, "stepstone": true, "xing": false },
+  "windowHours": 24,
+  "careerWindowHours": 336,
+  "maxAnalyze": 60,
+  "includeCareerPages": true
+}
